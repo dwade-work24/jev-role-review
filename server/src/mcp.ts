@@ -9,7 +9,7 @@ import {
 import type { JevClient } from "./jev/client.js";
 import type { ProfileStore } from "./profile/store.js";
 import { getCandidateProfile } from "./tools/get-candidate-profile.js";
-import { runDualAssessment } from "./tools/run-dual-assessment.js";
+import { DualAssessmentError, runDualAssessment } from "./tools/run-dual-assessment.js";
 
 export interface MetadataLogger {
   info(event: string, fields: Readonly<Record<string, unknown>>): void;
@@ -28,8 +28,19 @@ export interface JevMcpDependencies {
   readonly logger?: MetadataLogger;
 }
 
-function safeError(error: unknown): { name: string; request_id?: string } {
+function safeError(error: unknown): {
+  name: string;
+  request_id?: string;
+  failures?: DualAssessmentError["failures"];
+} {
   if (!(error instanceof Error)) return { name: "Error" };
+  if (error instanceof DualAssessmentError) {
+    return {
+      name: error.name,
+      request_id: error.requestId,
+      failures: error.failures,
+    };
+  }
   const requestId = "requestId" in error && typeof error.requestId === "string"
     ? error.requestId
     : undefined;

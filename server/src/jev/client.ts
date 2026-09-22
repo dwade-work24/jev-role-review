@@ -38,10 +38,21 @@ export interface HttpJevClientOptions {
   readonly fetchImplementation?: typeof fetch;
 }
 
+export type JevUpstreamFailureKind = "timeout" | "network" | "http" | "invalid_response";
+
 export class JevUpstreamError extends Error {
-  constructor(message = "Jev assessment failed") {
+  readonly kind: JevUpstreamFailureKind;
+  readonly status?: number;
+
+  constructor(
+    kind: JevUpstreamFailureKind,
+    message = "Jev assessment failed",
+    status?: number,
+  ) {
     super(message);
     this.name = "JevUpstreamError";
+    this.kind = kind;
+    if (status !== undefined) this.status = status;
   }
 }
 
@@ -75,20 +86,20 @@ export class HttpJevClient implements JevClient {
         signal: combinedSignal,
       });
     } catch (error) {
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       throw new JevUpstreamError(
-        error instanceof DOMException && error.name === "TimeoutError"
-          ? "Jev assessment timed out"
-          : undefined,
+        timedOut ? "timeout" : "network",
+        timedOut ? "Jev assessment timed out" : undefined,
       );
     }
     if (!response.ok) {
       // The body may echo submitted evidence, so it is deliberately ignored.
-      throw new JevUpstreamError(`Jev returned HTTP ${response.status}`);
+      throw new JevUpstreamError("http", `Jev returned HTTP ${response.status}`, response.status);
     }
     try {
       return JevAssessmentResponseSchema.parse(await response.json());
     } catch {
-      throw new JevUpstreamError("Jev returned an invalid response");
+      throw new JevUpstreamError("invalid_response", "Jev returned an invalid response");
     }
   }
 }

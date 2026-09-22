@@ -6,7 +6,14 @@ import {
   type DualAssessmentOutput,
   type RunDualAssessmentInput,
 } from "../domain/schemas.js";
-import { buildJevRequest, type JevAssessmentResponse, type JevClient } from "../jev/client.js";
+import {
+  buildJevRequest,
+  JevUpstreamError,
+  type CandidateView,
+  type JevAssessmentResponse,
+  type JevClient,
+  type JevUpstreamFailureKind,
+} from "../jev/client.js";
 import {
   ProfileNotFoundError,
   ProfileVersionMismatchError,
@@ -15,12 +22,27 @@ import {
 
 export class DualAssessmentError extends Error {
   readonly requestId: string;
+  readonly failures: readonly DualAssessmentFailure[];
 
-  constructor(requestId: string) {
+  constructor(requestId: string, failures: readonly DualAssessmentFailure[]) {
     super("One or more Jev assessments failed");
     this.name = "DualAssessmentError";
     this.requestId = requestId;
+    this.failures = failures;
   }
+}
+
+export interface DualAssessmentFailure {
+  readonly view: CandidateView;
+  readonly kind: JevUpstreamFailureKind | "unexpected";
+  readonly status?: number;
+}
+
+function sanitizedFailure(view: CandidateView, reason: unknown): DualAssessmentFailure {
+  if (!(reason instanceof JevUpstreamError)) return { view, kind: "unexpected" };
+  return reason.status === undefined
+    ? { view, kind: reason.kind }
+    : { view, kind: reason.kind, status: reason.status };
 }
 
 async function timedAssessment(
@@ -69,7 +91,14 @@ export async function runDualAssessment(
     timedAssessment(jevClient, longFormRequest),
   ]);
   if (tailored.status === "rejected" || longForm.status === "rejected") {
-    throw new DualAssessmentError(requestId);
+    const failures: DualAssessmentFailure[] = [];
+    if (tailored.status === "rejected") {
+      failures.push(sanitizedFailure("tailored_resume", tailored.reason));
+    }
+    if (longForm.status === "rejected") {
+      failures.push(sanitizedFailure("long_form_history", longForm.reason));
+    }
+    throw new DualAssessmentError(requestId, failures);
   }
 
   return DualAssessmentOutputSchema.parse({

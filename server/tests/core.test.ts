@@ -154,6 +154,7 @@ test("partial upstream failure returns a generic error with a request ID", async
   assert.ok(caught instanceof DualAssessmentError);
   assert.match(caught.requestId, /^[0-9a-f-]{36}$/);
   assert.equal(caught.message, "One or more Jev assessments failed");
+  assert.deepEqual(caught.failures, [{ view: "long_form_history", kind: "unexpected" }]);
   assert.doesNotMatch(caught.message, /private text/i);
 });
 
@@ -176,6 +177,8 @@ test("HttpJevClient never exposes an upstream response body", async () => {
     (error: unknown) => {
       assert.ok(error instanceof JevUpstreamError);
       assert.equal(error.message, "Jev returned HTTP 500");
+      assert.equal(error.kind, "http");
+      assert.equal(error.status, 500);
       assert.doesNotMatch(error.message, /private candidate evidence/i);
       return true;
     },
