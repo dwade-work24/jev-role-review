@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "${CLOUDFLARE_WORKER_NAME}",
+  "main": "src/cloudflare/worker.ts",
+  "compatibility_date": "2026-09-22",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "keep_vars": true,
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "${OAUTH_KV_NAMESPACE_ID}" },
+    { "binding": "PROFILE_KV", "id": "${PROFILE_KV_NAMESPACE_ID}" }
+  ]
+}

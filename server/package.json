@@ -7,18 +7,30 @@
   "exports": "./dist/src/index.js",
   "scripts": {
     "build": "tsc",
-    "check": "npm run typecheck && npm test",
+    "cf:config": "node scripts/generate-wrangler-config.mjs",
+    "cf:dry-run": "node scripts/generate-wrangler-config.mjs --dry-run && wrangler deploy --dry-run -c .wrangler.generated.jsonc",
+    "check": "npm run typecheck && npm test && npm run cf:dry-run",
+    "deploy": "npm run cf:config && wrangler deploy -c .wrangler.generated.jsonc",
+    "profile:upload": "npm run cf:config && tsx scripts/upload-profile.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@cloudflare/workers-oauth-provider": "^0.10.3",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.24.0",
+    "jose": "^6.2.12",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260922.1",
     "@types/node": "^24.10.0",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.136.2"
   }
 }

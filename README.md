@@ -45,9 +45,9 @@ python3 scripts/check_public_repo.py
 
 GitHub Actions runs the same policy check, a synthetic dry run, unit tests, and secret scanning on every push and pull request.
 
-## MCP server foundation
+## MCP server
 
-The provider-neutral TypeScript MCP core is in [`server/`](server/). It exposes `get_candidate_profile` and `run_dual_assessment`, while keeping authentication, profile persistence, hosting transport, and secret injection behind interfaces. Local validation uses only synthetic fixtures:
+The TypeScript server in [`server/`](server/) exposes `get_candidate_profile` and `run_dual_assessment`. Its provider-neutral core is deployed through a Cloudflare adapter using OAuth-protected Streamable HTTP at the stable `/mcp` endpoint, private Cloudflare KV profile storage, and a single allowlisted Google account. Local validation uses only synthetic fixtures:
 
 ```bash
 cd server
@@ -56,4 +56,4 @@ npm run check
 npm run build
 ```
 
-See [`server/README.md`](server/README.md) for tool behavior and the contract a future Cloudflare, Azure, AWS, or Google Cloud adapter must implement.
+See [`server/README.md`](server/README.md) for the architecture and exact Cloudflare, Google OAuth, secret, profile-upload, and Git-deployment setup.

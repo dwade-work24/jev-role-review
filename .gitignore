@@ -16,6 +16,9 @@ dist/
 .env
 .env.*
 !.env.example
+.dev.vars
+.wrangler/
+.wrangler.generated.jsonc
 *.pem
 *.key
 *.p12
