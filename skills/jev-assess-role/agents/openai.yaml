@@ -1,0 +1,13 @@
+interface:
+  display_name: Jev Role Assessment
+  short_description: Compare tailored and long-form career evidence
+  default_prompt: Use $jev-assess-role to assess this job description with Jev.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true
