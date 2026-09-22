@@ -65,9 +65,9 @@ export class HttpJevClient implements JevClient {
   constructor(options: HttpJevClientOptions) {
     if (!options.apiKey.trim()) throw new Error("A Jev API key is required");
     this.#endpoint = options.endpoint ?? "https://api.typesafe.ai/v1/systemone";
-    this.#apiKey = options.apiKey;
+    this.#apiKey = options.apiKey.trim();
     this.#timeoutMs = options.timeoutMs ?? 60_000;
-    this.#fetch = options.fetchImplementation ?? fetch;
+    this.#fetch = options.fetchImplementation ?? globalThis.fetch.bind(globalThis);
   }
 
   async assess(request: JevAssessmentRequest, signal?: AbortSignal): Promise<JevAssessmentResponse> {
