@@ -1,0 +1,24 @@
+{
+  "name": "@jev-role-review/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-neutral MCP tools for private dual Jev role assessments.",
+  "type": "module",
+  "exports": "./dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "check": "npm run typecheck && npm test",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

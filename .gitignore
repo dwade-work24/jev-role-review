@@ -7,6 +7,11 @@ htmlcov/
 .venv/
 venv/
 
+# Node and TypeScript tooling
+node_modules/
+dist/
+*.tsbuildinfo
+
 # Local secrets and provider configuration
 .env
 .env.*
