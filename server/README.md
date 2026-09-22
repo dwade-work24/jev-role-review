@@ -38,7 +38,7 @@ The adapter is also responsible for the Streamable HTTP transport and OAuth disc
 - Cloudflare's OAuth provider performs MCP OAuth discovery, PKCE/token handling, dynamic client registration, and bearer-token validation.
 - Google is the upstream identity provider. Only `openid email profile` are requested. The ID token signature, issuer, audience, verified-email flag, and exact account allowlist are checked.
 - The Worker does not retain Google access or refresh tokens. Its MCP token contains only Google's opaque `sub` value and the granted MCP scopes.
-- `OAUTH_KV` stores OAuth grants and short-lived login state. `PROFILE_KV` stores the private profile under that opaque subject.
+- `OAUTH_KV` stores OAuth grants. Short-lived browser state is carried in HMAC-signed, secure cookies so it does not depend on eventually consistent KV reads. `PROFILE_KV` stores the private profile under that opaque subject.
 - The profile uploader writes an immutable, SHA-256-addressed record first and advances the `current` pointer second. Reads recompute the digest before returning any profile.
 
 ## One-time Cloudflare setup
@@ -70,9 +70,10 @@ npx wrangler secret put JEV_API_KEY -c .wrangler.generated.jsonc
 npx wrangler secret put GOOGLE_CLIENT_ID -c .wrangler.generated.jsonc
 npx wrangler secret put GOOGLE_CLIENT_SECRET -c .wrangler.generated.jsonc
 npx wrangler secret put ALLOWED_GOOGLE_EMAIL -c .wrangler.generated.jsonc
+npx wrangler secret put COOKIE_ENCRYPTION_KEY -c .wrangler.generated.jsonc
 ```
 
-`JEV_API_URL` is optional. Set it as another Worker secret only when overriding the default TypeSafe endpoint.
+Generate `COOKIE_ENCRYPTION_KEY` with `openssl rand -hex 32`, then paste the output only at Wrangler's secret prompt. `JEV_API_URL` is optional. Set it as another Worker secret only when overriding the default TypeSafe endpoint.
 
 ## One-time Google OAuth setup
 
@@ -114,6 +115,6 @@ In the Cloudflare Git-connected Worker, set the root directory to `server` and c
 - Build command: `npm ci && npm run check`
 - Deploy command: `npm run deploy`
 - Build variables: `CLOUDFLARE_WORKER_NAME`, `OAUTH_KV_NAMESPACE_ID`, and `PROFILE_KV_NAMESPACE_ID`
-- Worker runtime secrets: `JEV_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_GOOGLE_EMAIL`
+- Worker runtime secrets: `JEV_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_GOOGLE_EMAIL`, and `COOKIE_ENCRYPTION_KEY`
 
 The generated Wrangler file is ignored, so GitHub receives instructions and a variable-driven template—not account IDs, personal identity, candidate data, or secrets.

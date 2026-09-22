@@ -13,6 +13,7 @@ export interface CloudflareEnv {
   readonly GOOGLE_CLIENT_ID: string;
   readonly GOOGLE_CLIENT_SECRET: string;
   readonly ALLOWED_GOOGLE_EMAIL: string;
+  readonly COOKIE_ENCRYPTION_KEY: string;
   readonly JEV_API_KEY: string;
   readonly JEV_API_URL?: string;
 }

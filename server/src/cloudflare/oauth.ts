@@ -6,11 +6,13 @@ import {
 import { z } from "zod";
 import type { CloudflareEnv } from "./env.js";
 import { exchangeGoogleCode, googleAuthorizationUrl } from "./google.js";
+import { sealState, unsealState } from "./signed-state.js";
 
 const FLOW_TTL_SECONDS = 600;
 const SUPPORTED_SCOPES = new Set(["profile:read", "assessment:run"]);
 const CSRF_COOKIE = "__Host-CSRF_TOKEN";
-const GOOGLE_SESSION_COOKIE = "__Host-GOOGLE_OAUTH_SESSION";
+const CONSENT_STATE_COOKIE = "__Host-MCP_CONSENT_STATE";
+const GOOGLE_STATE_COOKIE = "__Host-GOOGLE_OAUTH_STATE";
 
 const AuthRequestSchema = z.object({
   responseType: z.string(),
@@ -24,14 +26,14 @@ const AuthRequestSchema = z.object({
   issuer: z.string().optional(),
 }).strip();
 
-const PendingConsentSchema = z.object({
+const ConsentStateSchema = z.object({
   oauthRequest: AuthRequestSchema,
   csrfHash: z.string(),
 }).strict();
 
-const PendingGoogleSchema = z.object({
+const GoogleStateSchema = z.object({
   oauthRequest: AuthRequestSchema,
-  sessionHash: z.string(),
+  state: z.string(),
   nonce: z.string(),
 }).strict();
 
@@ -111,7 +113,8 @@ function oauthErrorRedirect(request: AuthRequest, code: string, description: str
   if (request.issuer) redirect.searchParams.set("iss", request.issuer);
   return responseWithCookies(redirect.toString(), [
     clearCookie(CSRF_COOKIE),
-    clearCookie(GOOGLE_SESSION_COOKIE),
+    clearCookie(CONSENT_STATE_COOKIE),
+    clearCookie(GOOGLE_STATE_COOKIE),
   ]);
 }
 
@@ -119,7 +122,7 @@ function grantedScopes(requested: string[]): string[] {
   return requested.filter((scope) => SUPPORTED_SCOPES.has(scope));
 }
 
-function consentPage(client: ClientInfo, request: AuthRequest, consentId: string, csrf: string): string {
+function consentPage(client: ClientInfo, request: AuthRequest, csrf: string): string {
   const clientName = escapeHtml(client.clientName?.trim() || "An MCP client");
   const scopeItems = request.scope
     .map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`)
@@ -133,7 +136,6 @@ function consentPage(client: ClientInfo, request: AuthRequest, consentId: string
 <ul>${scopeItems}</ul>
 <p>You will next sign in with the single Google account allowed by the server configuration.</p>
 <form method="post" action="/authorize">
-<input type="hidden" name="consent_id" value="${escapeHtml(consentId)}">
 <input type="hidden" name="csrf_token" value="${escapeHtml(csrf)}">
 <button type="submit" name="decision" value="approve">Continue with Google</button>
 <button type="submit" name="decision" value="deny">Deny</button>
@@ -161,70 +163,72 @@ async function showConsent(request: Request, env: CloudflareEnv): Promise<Respon
   const client = await env.OAUTH_PROVIDER.lookupClient(parsed.clientId);
   if (client === null) return errorResponse("Unknown OAuth client");
 
-  const consentId = randomToken();
   const csrf = randomToken();
-  await env.OAUTH_KV.put(
-    `flow/consent/${consentId}`,
-    JSON.stringify({ oauthRequest: parsed, csrfHash: await sha256Text(csrf) }),
-    { expirationTtl: FLOW_TTL_SECONDS },
+  const consentState = await sealState(
+    { oauthRequest: parsed, csrfHash: await sha256Text(csrf) },
+    env.COOKIE_ENCRYPTION_KEY,
+    FLOW_TTL_SECONDS,
   );
-  return new Response(consentPage(client, parsed, consentId, csrf), {
-    headers: {
-      "cache-control": "no-store",
-      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-      "content-type": "text/html; charset=utf-8",
-      "referrer-policy": "no-referrer",
-      "set-cookie": setCookie(CSRF_COOKIE, csrf),
-      "x-content-type-options": "nosniff",
-    },
+  const headers = new Headers({
+    "cache-control": "no-store",
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "content-type": "text/html; charset=utf-8",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
   });
+  headers.append("set-cookie", setCookie(CSRF_COOKIE, csrf));
+  headers.append("set-cookie", setCookie(CONSENT_STATE_COOKIE, consentState));
+  return new Response(consentPage(client, parsed, csrf), { headers });
 }
 
 async function submitConsent(request: Request, env: CloudflareEnv): Promise<Response> {
   const form = await request.formData();
-  const consentId = form.get("consent_id");
   const csrf = form.get("csrf_token");
-  const cookie = cookieValue(request, CSRF_COOKIE);
-  if (typeof consentId !== "string" || typeof csrf !== "string" || cookie !== csrf) {
+  const csrfCookie = cookieValue(request, CSRF_COOKIE);
+  const sealedConsent = cookieValue(request, CONSENT_STATE_COOKIE);
+  if (typeof csrf !== "string" || csrfCookie !== csrf || !sealedConsent) {
     return errorResponse("Invalid or expired authorization request");
   }
-  const key = `flow/consent/${consentId}`;
-  const pending = PendingConsentSchema.safeParse(await env.OAUTH_KV.get(key, { type: "json" }));
+  const pending = ConsentStateSchema.safeParse(
+    await unsealState(sealedConsent, env.COOKIE_ENCRYPTION_KEY),
+  );
   if (!pending.success || pending.data.csrfHash !== await sha256Text(csrf)) {
     return errorResponse("Invalid or expired authorization request");
   }
-  await env.OAUTH_KV.delete(key);
   const oauthRequest = storedAuthRequest(pending.data.oauthRequest);
   if (form.get("decision") !== "approve") {
     return oauthErrorRedirect(oauthRequest, "access_denied", "The user denied this request");
   }
 
   const state = randomToken();
-  const session = randomToken();
   const nonce = randomToken();
-  await env.OAUTH_KV.put(
-    `flow/google/${state}`,
-    JSON.stringify({ oauthRequest, sessionHash: await sha256Text(session), nonce }),
-    { expirationTtl: FLOW_TTL_SECONDS },
+  const googleState = await sealState(
+    { oauthRequest, state, nonce },
+    env.COOKIE_ENCRYPTION_KEY,
+    FLOW_TTL_SECONDS,
   );
   const redirectUri = `${new URL(request.url).origin}/oauth/google/callback`;
   return responseWithCookies(
     googleAuthorizationUrl({ clientId: env.GOOGLE_CLIENT_ID, redirectUri, state, nonce }),
-    [clearCookie(CSRF_COOKIE), setCookie(GOOGLE_SESSION_COOKIE, session)],
+    [
+      clearCookie(CSRF_COOKIE),
+      clearCookie(CONSENT_STATE_COOKIE),
+      setCookie(GOOGLE_STATE_COOKIE, googleState),
+    ],
   );
 }
 
 async function googleCallback(request: Request, env: CloudflareEnv): Promise<Response> {
   const url = new URL(request.url);
   const state = url.searchParams.get("state");
-  const session = cookieValue(request, GOOGLE_SESSION_COOKIE);
-  if (!state || !session) return errorResponse("Invalid or expired Google authorization");
-  const key = `flow/google/${state}`;
-  const pending = PendingGoogleSchema.safeParse(await env.OAUTH_KV.get(key, { type: "json" }));
-  if (!pending.success || pending.data.sessionHash !== await sha256Text(session)) {
+  const sealedGoogleState = cookieValue(request, GOOGLE_STATE_COOKIE);
+  if (!state || !sealedGoogleState) return errorResponse("Invalid or expired Google authorization");
+  const pending = GoogleStateSchema.safeParse(
+    await unsealState(sealedGoogleState, env.COOKIE_ENCRYPTION_KEY),
+  );
+  if (!pending.success || pending.data.state !== state) {
     return errorResponse("Invalid or expired Google authorization");
   }
-  await env.OAUTH_KV.delete(key);
   if (url.searchParams.has("error")) {
     return oauthErrorRedirect(
       storedAuthRequest(pending.data.oauthRequest),
@@ -262,7 +266,7 @@ async function googleCallback(request: Request, env: CloudflareEnv): Promise<Res
     scope,
     props: { subject: identity.subject, scopes: scope },
   });
-  return responseWithCookies(redirectTo, [clearCookie(GOOGLE_SESSION_COOKIE)]);
+  return responseWithCookies(redirectTo, [clearCookie(GOOGLE_STATE_COOKIE)]);
 }
 
 export const oauthApplicationHandler: ExportedHandler<CloudflareEnv> = {

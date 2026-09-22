@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { JWTPayload } from "jose";
 import { googleAuthorizationUrl, validateGoogleClaims } from "../src/cloudflare/google.js";
+import { sealState, unsealState } from "../src/cloudflare/signed-state.js";
 import { sha256Json } from "../src/domain/json.js";
 import {
   CloudflareKvProfileStore,
@@ -79,4 +80,16 @@ test("Google authorization requests only identity scopes and binds an OIDC nonce
   assert.equal(url.searchParams.get("state"), "synthetic-state");
   assert.equal(url.searchParams.get("nonce"), "synthetic-nonce");
   assert.equal(url.searchParams.has("access_type"), false);
+});
+
+test("OAuth browser state is signed, tamper-evident, and expires", async () => {
+  const key = "synthetic-cookie-signing-key-32-characters-minimum";
+  const sealed = await sealState({ request: "synthetic" }, key, 60);
+  assert.deepEqual(await unsealState(sealed, key), { request: "synthetic" });
+
+  const tampered = `${sealed.slice(0, -1)}${sealed.endsWith("a") ? "b" : "a"}`;
+  assert.equal(await unsealState(tampered, key), null);
+
+  const expired = await sealState({ request: "synthetic" }, key, -1);
+  assert.equal(await unsealState(expired, key), null);
 });
