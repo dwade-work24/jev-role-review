@@ -1,0 +1,69 @@
+{
+  "questionnaire": {
+    "_synthetic": true,
+    "source": {
+      "title": "Director of Widget Engineering",
+      "company": "Example Manufacturing Company"
+    },
+    "questions": {
+      "AT-0001 | Lead software delivery": {
+        "type": "score",
+        "instructions": "Evaluate documented evidence of leading software delivery from planning through release.",
+        "criteria": [
+          "No documented evidence.",
+          "Related evidence with limited scope.",
+          "Direct and substantive evidence."
+        ]
+      },
+      "AT-0002 | Lead distributed teams": {
+        "type": "score",
+        "instructions": "Evaluate documented evidence of leading geographically distributed or partner engineering teams.",
+        "criteria": [
+          "No documented evidence.",
+          "Related evidence with limited scope.",
+          "Direct and substantive evidence."
+        ]
+      },
+      "AT-0003 | Modernize cloud platforms": {
+        "type": "score",
+        "instructions": "Evaluate documented evidence of modernizing or scaling cloud software platforms.",
+        "criteria": [
+          "No documented evidence.",
+          "Related evidence with limited scope.",
+          "Direct and substantive evidence."
+        ]
+      },
+      "AT-0004 | Apply security practices": {
+        "type": "score",
+        "instructions": "Evaluate documented evidence of applying software security, privacy, or compliance practices.",
+        "criteria": [
+          "No documented evidence.",
+          "Related evidence with limited scope.",
+          "Direct and substantive evidence."
+        ]
+      },
+      "AT-0005 | Evidence summary": {
+        "type": "noul",
+        "instructions": "Briefly summarize the strongest documented evidence and identify any qualification that lacks direct evidence. Do not infer undocumented experience."
+      }
+    }
+  },
+  "tailored_resume": {
+    "_synthetic": true,
+    "candidate": {
+      "name": "Sample Candidate",
+      "experience": [
+        {
+          "company": "Example Manufacturing Company",
+          "role": "Engineering Director",
+          "evidence": [
+            "Led a synthetic software delivery team from planning through release.",
+            "Coordinated a small partner team in another region.",
+            "Sponsored a cloud migration for a fictional product."
+          ]
+        }
+      ]
+    }
+  },
+  "model": "jev-latest"
+}

@@ -76,7 +76,11 @@ export class HttpJevClient implements JevClient {
     const combinedSignal = signal === undefined ? timeoutSignal : AbortSignal.any([signal, timeoutSignal]);
     let response: Response;
     try {
-      response = await this.#fetch(this.#endpoint, {
+      // Invoke injected implementations as plain functions. Workerd enforces the
+      // receiver of the native global fetch, while Node tolerates an unrelated
+      // receiver and can otherwise hide this production-only failure mode.
+      const fetchImplementation = this.#fetch;
+      response = await fetchImplementation(this.#endpoint, {
         method: "POST",
         headers: {
           authorization: `Bearer ${this.#apiKey}`,

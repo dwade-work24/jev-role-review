@@ -108,6 +108,27 @@ npm run profile:upload -- \
 
 Without `--remote`, the upload goes to Wrangler's local KV, which is the safe default. The uploader never writes the profile into the repository.
 
+## Production acceptance test
+
+After OAuth and profile upload succeed, use an OAuth-capable MCP client or the MCP Inspector to call `run_dual_assessment`. Paste the complete contents of [`examples/mcp-dual-input.json`](examples/mcp-dual-input.json) as the tool arguments. The supplied questionnaire and tailored resume are synthetic; the second run intentionally reads the authenticated account's private current profile.
+
+Verify all of the following:
+
+- the tool completes without `isError`;
+- `request_id` is a UUID and `model_requested` is `jev-latest`;
+- `profile.version` and `profile.sha256` identify the expected private profile;
+- both `tailored_resume.response.answers` and `long_form_history.response.answers` contain all five `AT-` keys;
+- the resolved Jev model is present in each response; and
+- Worker logs contain only metadata events, IDs, versions, timings, and sanitized failure categories—not candidate evidence, tool arguments, credentials, or Jev response bodies.
+
+Exact scores are not acceptance criteria. The synthetic resume is intentionally sparse, so different scores between it and the private long-form profile demonstrate the two-view comparison rather than a defect.
+
+## Troubleshooting
+
+An immediate `dual_assessment_failed` event with both views reported as `kind: "network"` can indicate that the Worker rejected the outbound call before network I/O. Keep the native Worker `fetch` bound to `globalThis`, and invoke injected fetch implementations as plain functions; calling a stored native `fetch` as an object method can produce Workerd's `Illegal invocation` error even though Node-based tests pass.
+
+An HTTP failure category means Jev returned a response. Check only the logged status code; response bodies are deliberately discarded because they may contain submitted evidence. A delayed timeout indicates that the configured Jev deadline was reached. Never add request bodies, Authorization headers, profiles, resumes, or raw upstream errors to production logs while troubleshooting.
+
 ## Cloudflare Git deployment
 
 In the Cloudflare Git-connected Worker, set the root directory to `server` and configure:

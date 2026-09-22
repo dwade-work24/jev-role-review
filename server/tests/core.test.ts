@@ -74,6 +74,15 @@ test("dual-assessment input rejects an empty question set", () => {
   );
 });
 
+test("documented production acceptance input is valid and fully synthetic", async () => {
+  const url = new URL("../examples/mcp-dual-input.json", import.meta.url);
+  const raw = JSON.parse(await readFile(url, "utf8")) as Record<string, unknown>;
+  const input = RunDualAssessmentInputSchema.parse(raw);
+  assert.equal(input.questionnaire._synthetic, true);
+  assert.equal(input.tailored_resume._synthetic, true);
+  assert.equal(Object.keys(input.questionnaire.questions).length, 5);
+});
+
 test("run_dual_assessment sends identical questions and model with two candidate views", async () => {
   const { profileStore, profile, record } = await setup();
   const questionnaire = await fixture("questionnaire.json");
@@ -183,4 +192,27 @@ test("HttpJevClient never exposes an upstream response body", async () => {
       return true;
     },
   );
+});
+
+test("HttpJevClient invokes an injected fetch without an object receiver", async () => {
+  let observedReceiver: unknown = "not-called";
+  const client = new HttpJevClient({
+    apiKey: "  synthetic-key  ",
+    fetchImplementation: async function (this: unknown, _input, init) {
+      observedReceiver = this;
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer synthetic-key");
+      return Response.json({ answers: { synthetic: true } });
+    },
+  });
+
+  await client.assess({
+    model: "jev-synthetic",
+    state: { candidate_view: "tailored_resume", candidate: { _synthetic: true } },
+    questions: {
+      synthetic: { type: "noul", instructions: "Return a synthetic answer." },
+    },
+  });
+
+  assert.equal(observedReceiver, undefined);
 });
