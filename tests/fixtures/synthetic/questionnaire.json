@@ -1,0 +1,18 @@
+{
+  "_synthetic": true,
+  "source": {
+    "title": "Director of Widget Engineering",
+    "company": "Example Manufacturing Company"
+  },
+  "questions": {
+    "RQ-0001 | Lead software delivery": {
+      "type": "score",
+      "instructions": "Evaluate documented evidence of leading software delivery teams.",
+      "criteria": [
+        "No documented evidence.",
+        "Related evidence with limited scope.",
+        "Direct and substantive evidence."
+      ]
+    }
+  }
+}

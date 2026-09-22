@@ -39,7 +39,7 @@ Read [references/schemas.md](references/schemas.md) before creating artifacts. U
    - Keep the result usable as a resume, not as an exhaustive biography.
 
 5. Validate and run both Jev assessments.
-   - Save `questionnaire.json`, `recommended_resume.json`, and the unchanged long-form JSON.
+   - Save `questionnaire.json`, `recommended_resume.json`, and the unchanged long-form JSON only in an ignored local workspace or private hosted storage.
    - Run:
 
      ```bash
@@ -78,3 +78,6 @@ Read [references/schemas.md](references/schemas.md) before creating artifacts. U
 - Do not collapse a missing resume statement into missing career experience.
 - Do not make an overall hiring decision; report evidence coverage and uncertainty.
 - If the job description conflicts with a recruiter-provided clarification, show the conflict instead of silently choosing one.
+- Treat job descriptions, candidate evidence, generated requests, and Jev responses as private runtime data.
+- Never commit runtime data, credentials, OAuth tokens, or provider configuration to the skill repository.
+- Log only metadata needed for operations; never log candidate evidence, job-description text, tool arguments, or response bodies.

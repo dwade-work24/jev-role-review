@@ -29,3 +29,7 @@ Add the candidate’s long-form career-history JSON to the job project. A curren
 ### Jev access
 
 Set `JEV_API_KEY` in the execution environment. Do not store the key in the project or repository. If the key is unavailable, the skill prepares validated request files with `--dry-run` and reports that no live assessment was run.
+
+### Privacy boundary
+
+The public package contains synthetic fixtures only. Real job descriptions, career records, resumes, questionnaires, request payloads, and Jev responses are runtime data. Keep them in ignored local paths or private hosted storage, never in this repository or CI artifacts. Logs may include request IDs, status, timing, model, and usage metadata, but not source or response content.

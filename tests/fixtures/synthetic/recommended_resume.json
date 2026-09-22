@@ -1,0 +1,14 @@
+{
+  "_synthetic": true,
+  "candidate": {
+    "name": "Sample Candidate",
+    "experience": [
+      {
+        "company": "Example Manufacturing Company",
+        "role": "Engineering Director",
+        "evidence": ["Led a synthetic software delivery team."]
+      }
+    ]
+  },
+  "suggested_edits": []
+}

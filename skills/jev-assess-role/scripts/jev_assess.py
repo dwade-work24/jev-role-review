@@ -66,7 +66,10 @@ def build_request(model: str, view: str, candidate: dict[str, Any], questions: d
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    data = (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(data)
 
 
 def call_jev(endpoint: str, api_key: str, payload: dict[str, Any], timeout: float) -> tuple[dict[str, Any], float]:
@@ -85,8 +88,9 @@ def call_jev(endpoint: str, api_key: str, payload: dict[str, Any], timeout: floa
         with urllib.request.urlopen(request, timeout=timeout) as response:
             response_body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Jev returned HTTP {exc.code}: {detail}") from exc
+        # Response bodies can echo submitted candidate evidence. Do not expose them.
+        exc.read()
+        raise RuntimeError(f"Jev returned HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Jev request failed: {exc.reason}") from exc
     elapsed_ms = (time.perf_counter() - started) * 1000
@@ -117,7 +121,12 @@ def main() -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        args.output_dir.chmod(0o700)
+    except OSError as exc:
+        print(f"error: cannot secure output directory {args.output_dir}: {exc}", file=sys.stderr)
+        return 2
     requests = {
         "tailored_resume": build_request(args.model, "tailored_resume", tailored, questions),
         "long_form_history": build_request(args.model, "long_form_history", long_form, questions),

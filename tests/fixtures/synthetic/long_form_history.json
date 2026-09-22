@@ -1,0 +1,13 @@
+{
+  "_synthetic": true,
+  "candidate": {
+    "name": "Sample Candidate",
+    "positions": [
+      {
+        "company": "Example Manufacturing Company",
+        "role": "Engineering Director",
+        "details": ["Led a synthetic software delivery team from planning through release."]
+      }
+    ]
+  }
+}
