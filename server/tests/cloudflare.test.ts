@@ -103,6 +103,13 @@ test("OAuth browser state is signed, tamper-evident, and expires", async () => {
   const tampered = `${sealed.slice(0, -1)}${sealed.endsWith("a") ? "b" : "a"}`;
   assert.equal(await unsealState(tampered, key), null);
 
+  // Flip an unused low bit of the final signature character: atob may still
+  // decode it to the same bytes, but the signed representation must be unique.
+  const alphabet = ["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "01234", "56789-_"].join("");
+  const last = sealed.at(-1)!;
+  const equivalent = `${sealed.slice(0, -1)}${alphabet[alphabet.indexOf(last) ^ 1]}`;
+  assert.equal(await unsealState(equivalent, key), null);
+
   const expired = await sealState({ request: "synthetic" }, key, -1);
   assert.equal(await unsealState(expired, key), null);
 });

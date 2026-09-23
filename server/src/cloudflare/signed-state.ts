@@ -12,7 +12,10 @@ function base64UrlDecode(value: string): Uint8Array {
     Math.ceil(value.length / 4) * 4,
     "=",
   );
-  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  const decoded = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  // Reject alternate spellings of the same bytes (including unused padding bits).
+  if (base64UrlEncode(decoded) !== value) throw new Error("Invalid base64url encoding");
+  return decoded;
 }
 
 async function hmac(keyMaterial: string, value: string): Promise<Uint8Array> {
