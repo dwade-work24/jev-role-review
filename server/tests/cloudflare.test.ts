@@ -84,7 +84,7 @@ test("Google authorization requests only identity scopes and binds an OIDC nonce
 });
 
 test("existing grants stop working when the allowed Google account changes", async () => {
-  const signingKey = "synthetic-signing-key-with-at-least-32-characters";
+  const signingKey = "test-".repeat(12);
   const props = {
     subject: "synthetic-subject",
     scopes: ["profile:read"],
