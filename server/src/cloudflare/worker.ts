@@ -5,11 +5,20 @@ import { HttpJevClient } from "../jev/client.js";
 import { createJevMcpServer } from "../mcp.js";
 import { CloudflareKvProfileStore } from "../profile/store.js";
 import type { CloudflareEnv, McpAuthProps } from "./env.js";
+import { isCurrentAllowlistedGrant } from "./allowed-account.js";
 import { mcpScopes, oauthApplicationHandler } from "./oauth.js";
 
 class McpApiHandler extends WorkerEntrypoint<CloudflareEnv, McpAuthProps> {
   override async fetch(request: Request): Promise<Response> {
     const props = this.ctx.props;
+    // A changed allowlist immediately invalidates grants issued under the old one.
+    // Grants issued before this binding was introduced fail closed until reauthorization.
+    if (!(await isCurrentAllowlistedGrant(props, this.env.ALLOWED_GOOGLE_EMAIL, this.env.COOKIE_ENCRYPTION_KEY))) {
+      return new Response("Authorization expired. Please sign in again.", {
+        status: 401,
+        headers: { "cache-control": "no-store" },
+      });
+    }
     const handler = createMcpHandler(
       () => createJevMcpServer({
         profileStore: new CloudflareKvProfileStore(this.env.PROFILE_KV),
@@ -17,6 +26,10 @@ class McpApiHandler extends WorkerEntrypoint<CloudflareEnv, McpAuthProps> {
           apiKey: this.env.JEV_API_KEY,
           ...(this.env.JEV_API_URL === undefined ? {} : { endpoint: this.env.JEV_API_URL }),
         }),
+        // Missing production configuration must never silently disable cost protection.
+        assessmentRateLimiter: this.env.ASSESSMENT_RATE_LIMITER ?? {
+          limit: async () => ({ success: false }),
+        },
         resolveAuthContext: () => ({
           subject: props.subject,
           scopes: new Set(props.scopes),

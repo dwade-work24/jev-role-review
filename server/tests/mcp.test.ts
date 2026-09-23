@@ -19,7 +19,13 @@ test("MCP discovery and both tools work end to end with synthetic data", async (
   const jevClient: JevClient = {
     async assess(request) {
       requests.push(structuredClone(request));
-      return { answers: { result: "synthetic-pass" }, model: request.model };
+      return {
+        answers: Object.fromEntries(Object.entries(request.questions).map(([key, question]) => [
+          key,
+          question.type === "score" ? { type: "score", score: 2 } : { type: question.type },
+        ])),
+        model: request.model,
+      };
     },
   };
   const logEntries: Array<{ event: string; fields: Readonly<Record<string, unknown>> }> = [];
@@ -48,7 +54,7 @@ test("MCP discovery and both tools work end to end with synthetic data", async (
   const listed = await client.listTools();
   assert.deepEqual(
     listed.tools.map((tool) => tool.name).sort(),
-    ["get_candidate_profile", "run_dual_assessment"],
+    ["get_candidate_profile", "get_candidate_profile_metadata", "run_dual_assessment"],
   );
 
   const profileResult = await client.callTool({
@@ -57,6 +63,9 @@ test("MCP discovery and both tools work end to end with synthetic data", async (
   });
   assert.equal(profileResult.isError, undefined);
   assert.equal((profileResult.structuredContent as { version: string }).version, "synthetic-v1");
+  const metadataResult = await client.callTool({ name: "get_candidate_profile_metadata", arguments: {} });
+  assert.equal(metadataResult.isError, undefined);
+  assert.deepEqual(Object.keys(metadataResult.structuredContent ?? {}).sort(), ["sha256", "version"]);
 
   const assessmentResult = await client.callTool({
     name: "run_dual_assessment",

@@ -5,6 +5,7 @@ import {
 } from "@cloudflare/workers-oauth-provider";
 import { z } from "zod";
 import type { CloudflareEnv } from "./env.js";
+import { allowedAccountFingerprint } from "./allowed-account.js";
 import { exchangeGoogleCode, googleAuthorizationUrl } from "./google.js";
 import { sealState, unsealState } from "./signed-state.js";
 
@@ -124,6 +125,7 @@ function grantedScopes(requested: string[]): string[] {
 
 function consentPage(client: ClientInfo, request: AuthRequest, csrf: string): string {
   const clientName = escapeHtml(client.clientName?.trim() || "An MCP client");
+  const destination = escapeHtml(request.redirectUri);
   const scopeItems = request.scope
     .map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`)
     .join("");
@@ -133,6 +135,7 @@ function consentPage(client: ClientInfo, request: AuthRequest, csrf: string): st
 <style>body{font:16px system-ui;max-width:42rem;margin:4rem auto;padding:0 1rem;line-height:1.5}button{padding:.65rem 1rem;margin-right:.5rem}code{background:#eee;padding:.15rem .3rem}</style>
 </head><body><main><h1>Authorize Jev role review</h1>
 <p><strong>${clientName}</strong> is requesting access to this private MCP server.</p>
+<p>After approval, your browser will return to <strong>${destination}</strong>. Check that you recognize this destination before continuing.</p>
 <ul>${scopeItems}</ul>
 <p>You will next sign in with the single Google account allowed by the server configuration.</p>
 <form method="post" action="/authorize">
@@ -264,7 +267,11 @@ async function googleCallback(request: Request, env: CloudflareEnv): Promise<Res
     userId: identity.subject,
     metadata: { identityProvider: "google" },
     scope,
-    props: { subject: identity.subject, scopes: scope },
+    props: {
+      subject: identity.subject,
+      scopes: scope,
+      allowedAccountFingerprint: await allowedAccountFingerprint(env.ALLOWED_GOOGLE_EMAIL, env.COOKIE_ENCRYPTION_KEY),
+    },
   });
   return responseWithCookies(redirectTo, [clearCookie(GOOGLE_STATE_COOKIE)]);
 }

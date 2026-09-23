@@ -6,8 +6,8 @@ import type { JevAssessmentRequest, JevAssessmentResponse, JevClient } from "../
 import { HttpJevClient, JevUpstreamError } from "../src/jev/client.js";
 import { InMemoryProfileStore } from "../src/profile/store.js";
 import { RunDualAssessmentInputSchema } from "../src/domain/schemas.js";
-import { getCandidateProfile } from "../src/tools/get-candidate-profile.js";
-import { DualAssessmentError, runDualAssessment } from "../src/tools/run-dual-assessment.js";
+import { getCandidateProfile, getCandidateProfileMetadata } from "../src/tools/get-candidate-profile.js";
+import { AssessmentRateLimitError, DualAssessmentError, runDualAssessment } from "../src/tools/run-dual-assessment.js";
 
 async function fixture(name: string): Promise<Record<string, unknown>> {
   const url = new URL(`../../tests/fixtures/synthetic/${name}`, import.meta.url);
@@ -35,7 +35,10 @@ class RecordingJevClient implements JevClient {
     }
     return {
       model: request.model,
-      answers: { synthetic_answer: request.state.candidate_view },
+      answers: Object.fromEntries(Object.entries(request.questions).map(([key, question]) => [
+        key,
+        question.type === "score" ? { type: "score", score: 2 } : { type: question.type },
+      ])),
       usage: { input_tokens: 1, output_tokens: 1 },
     };
   }
@@ -64,6 +67,14 @@ test("profile access requires the profile:read scope", async () => {
   );
 });
 
+test("metadata-only request does not read the profile body", async () => {
+  const { profileStore, record } = await setup();
+  profileStore.getCurrent = async () => { throw new Error("profile body was read"); };
+  assert.deepEqual(await getCandidateProfileMetadata(auth, profileStore), {
+    version: record.version, sha256: record.sha256,
+  });
+});
+
 test("dual-assessment input rejects an empty question set", () => {
   assert.throws(
     () => RunDualAssessmentInputSchema.parse({
@@ -72,6 +83,16 @@ test("dual-assessment input rejects an empty question set", () => {
     }),
     { name: "ZodError" },
   );
+});
+
+test("assessment input limits question count and candidate byte size", () => {
+  const question = { type: "score", instructions: "Synthetic test", criteria: ["No", "Yes"] };
+  const questions = Object.fromEntries(Array.from({ length: 61 }, (_, index) => [`RQ-${index}`, question]));
+  assert.equal(RunDualAssessmentInputSchema.safeParse({ questionnaire: { questions }, tailored_resume: {} }).success, false);
+  assert.equal(RunDualAssessmentInputSchema.safeParse({
+    questionnaire: { questions: { "RQ-1": question } },
+    tailored_resume: { text: "x".repeat(128 * 1024) },
+  }).success, false);
 });
 
 test("documented production acceptance input is valid and fully synthetic", async () => {
@@ -113,12 +134,12 @@ test("run_dual_assessment sends identical questions and model with two candidate
   assert.equal(result.profile.sha256, record.sha256);
   assert.equal(result.model_requested, "jev-synthetic");
   assert.equal(
-    (result.runs.tailored_resume.response.answers as Record<string, unknown>).synthetic_answer,
-    "tailored_resume",
+    Object.keys(result.runs.tailored_resume.response.answers as Record<string, unknown>).length,
+    Object.keys(client.requests[0]!.questions).length,
   );
   assert.equal(
-    (result.runs.long_form_history.response.answers as Record<string, unknown>).synthetic_answer,
-    "long_form_history",
+    Object.keys(result.runs.long_form_history.response.answers as Record<string, unknown>).length,
+    Object.keys(client.requests[1]!.questions).length,
   );
 });
 
@@ -165,6 +186,36 @@ test("partial upstream failure returns a generic error with a request ID", async
   assert.equal(caught.message, "One or more Jev assessments failed");
   assert.deepEqual(caught.failures, [{ view: "long_form_history", kind: "unexpected" }]);
   assert.doesNotMatch(caught.message, /private text/i);
+});
+
+test("assessment rejects missing or malformed upstream answers", async () => {
+  const { profileStore } = await setup();
+  for (const answers of [{}, { "RQ-0001 | Lead software delivery": { type: "score", score: "invalid" } }]) {
+    const client: JevClient = { async assess() { return { answers }; } };
+    await assert.rejects(
+      runDualAssessment({
+        questionnaire: await fixture("questionnaire.json") as never,
+        tailored_resume: await fixture("recommended_resume.json"),
+        model: "jev-synthetic",
+      }, auth, profileStore, client),
+      (error: unknown) => error instanceof DualAssessmentError
+        && error.failures.every((failure) => failure.kind === "invalid_response"),
+    );
+  }
+});
+
+test("rate limit blocks both upstream calls before they start", async () => {
+  const { profileStore } = await setup();
+  const client = new RecordingJevClient();
+  await assert.rejects(
+    runDualAssessment({
+      questionnaire: await fixture("questionnaire.json") as never,
+      tailored_resume: await fixture("recommended_resume.json"),
+      model: "jev-synthetic",
+    }, auth, profileStore, client, { async limit() { return { success: false }; } }),
+    AssessmentRateLimitError,
+  );
+  assert.equal(client.requests.length, 0);
 });
 
 test("HttpJevClient never exposes an upstream response body", async () => {

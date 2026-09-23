@@ -10,7 +10,7 @@ Use a request such as:
 
 > Jev assess this.
 
-Then paste a job description or provide its URL. Add the candidate's long-form career-history JSON to the project. A current resume JSON is optional but recommended.
+Then paste a job description or provide its URL. For the hosted MCP app, upload the private long-form career history to the Worker's profile store using the instructions in `server/README.md`; do not add it to a public repository or ChatGPT project sources. A current resume is optional but recommended.
 
 ## Configuration
 
@@ -47,7 +47,7 @@ GitHub Actions runs the same policy check, a synthetic dry run, unit tests, and 
 
 ## MCP server
 
-The TypeScript server in [`server/`](server/) exposes `get_candidate_profile` and `run_dual_assessment`. Its provider-neutral core is deployed through a Cloudflare adapter using OAuth-protected Streamable HTTP at the stable `/mcp` endpoint, private Cloudflare KV profile storage, and a single allowlisted Google account. Local validation uses only synthetic fixtures:
+The TypeScript server in [`server/`](server/) exposes `get_candidate_profile`, `get_candidate_profile_metadata`, and `run_dual_assessment`. Its provider-neutral core is deployed through a Cloudflare adapter using OAuth-protected Streamable HTTP at the stable `/mcp` endpoint, private Cloudflare KV profile storage, and a single allowlisted Google account. Local validation uses only synthetic fixtures:
 
 ```bash
 cd server

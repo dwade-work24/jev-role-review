@@ -8,5 +8,8 @@
   "kv_namespaces": [
     { "binding": "OAUTH_KV", "id": "${OAUTH_KV_NAMESPACE_ID}" },
     { "binding": "PROFILE_KV", "id": "${PROFILE_KV_NAMESPACE_ID}" }
+  ],
+  "ratelimits": [
+    { "name": "ASSESSMENT_RATE_LIMITER", "namespace_id": "${ASSESSMENT_RATE_LIMIT_NAMESPACE_ID}", "simple": { "limit": 5, "period": 60 } }
   ]
 }

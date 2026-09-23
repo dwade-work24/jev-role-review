@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { JWTPayload } from "jose";
 import { googleAuthorizationUrl, validateGoogleClaims } from "../src/cloudflare/google.js";
+import { allowedAccountFingerprint, isCurrentAllowlistedGrant } from "../src/cloudflare/allowed-account.js";
 import { sealState, unsealState } from "../src/cloudflare/signed-state.js";
 import { sha256Json } from "../src/domain/json.js";
 import {
@@ -80,6 +81,18 @@ test("Google authorization requests only identity scopes and binds an OIDC nonce
   assert.equal(url.searchParams.get("state"), "synthetic-state");
   assert.equal(url.searchParams.get("nonce"), "synthetic-nonce");
   assert.equal(url.searchParams.has("access_type"), false);
+});
+
+test("existing grants stop working when the allowed Google account changes", async () => {
+  const signingKey = "synthetic-signing-key-with-at-least-32-characters";
+  const props = {
+    subject: "synthetic-subject",
+    scopes: ["profile:read"],
+    allowedAccountFingerprint: await allowedAccountFingerprint("allowed@example.com", signingKey),
+  };
+  assert.equal(await isCurrentAllowlistedGrant(props, "ALLOWED@EXAMPLE.COM", signingKey), true);
+  assert.equal(await isCurrentAllowlistedGrant(props, "other@example.com", signingKey), false);
+  assert.equal(await isCurrentAllowlistedGrant({ ...props, allowedAccountFingerprint: "" }, "allowed@example.com", signingKey), false);
 });
 
 test("OAuth browser state is signed, tamper-evident, and expires", async () => {

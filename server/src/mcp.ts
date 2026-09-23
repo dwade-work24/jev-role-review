@@ -2,14 +2,15 @@ import { McpServer } from "@modelcontextprotocol/server";
 import type { AuthContextResolver } from "./auth/context.js";
 import {
   CandidateProfileOutputSchema,
+  CandidateProfileMetadataOutputSchema,
   DualAssessmentOutputSchema,
   GetCandidateProfileInputSchema,
   RunDualAssessmentInputSchema,
 } from "./domain/schemas.js";
 import type { JevClient } from "./jev/client.js";
 import type { ProfileStore } from "./profile/store.js";
-import { getCandidateProfile } from "./tools/get-candidate-profile.js";
-import { DualAssessmentError, runDualAssessment } from "./tools/run-dual-assessment.js";
+import { getCandidateProfile, getCandidateProfileMetadata } from "./tools/get-candidate-profile.js";
+import { type AssessmentRateLimiter, DualAssessmentError, runDualAssessment } from "./tools/run-dual-assessment.js";
 
 export interface MetadataLogger {
   info(event: string, fields: Readonly<Record<string, unknown>>): void;
@@ -24,6 +25,7 @@ const silentLogger: MetadataLogger = {
 export interface JevMcpDependencies {
   readonly profileStore: ProfileStore;
   readonly jevClient: JevClient;
+  readonly assessmentRateLimiter?: AssessmentRateLimiter;
   readonly resolveAuthContext: AuthContextResolver;
   readonly logger?: MetadataLogger;
 }
@@ -56,6 +58,28 @@ export function createJevMcpServer(dependencies: JevMcpDependencies): McpServer 
     {
       instructions:
         "Use get_candidate_profile to inspect the authenticated account's authoritative profile. Use run_dual_assessment to compare one questionnaire against both a tailored resume and that profile. Never request or transmit a Jev API key as a tool argument.",
+    },
+  );
+
+  server.registerTool(
+    "get_candidate_profile_metadata",
+    {
+      title: "Get candidate profile metadata",
+      description: "Return only the authenticated account's current profile version and SHA-256; do not load its contents.",
+      inputSchema: GetCandidateProfileInputSchema.shape,
+      outputSchema: CandidateProfileMetadataOutputSchema.shape,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async (_input, requestContext) => {
+      try {
+        const auth = await dependencies.resolveAuthContext(requestContext);
+        const result = await getCandidateProfileMetadata(auth, dependencies.profileStore);
+        logger.info("profile_metadata_read", { profile_version: result.version });
+        return { structuredContent: result, content: [{ type: "text", text: `Current profile version ${result.version}.` }] };
+      } catch (error) {
+        logger.error("profile_metadata_read_failed", safeError(error));
+        return { isError: true, content: [{ type: "text", text: "Candidate profile metadata could not be loaded." }] };
+      }
     },
   );
 
@@ -115,6 +139,7 @@ export function createJevMcpServer(dependencies: JevMcpDependencies): McpServer 
           auth,
           dependencies.profileStore,
           dependencies.jevClient,
+          dependencies.assessmentRateLimiter,
         );
         logger.info("dual_assessment_completed", {
           request_id: result.request_id,

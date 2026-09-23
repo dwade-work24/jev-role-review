@@ -5,9 +5,10 @@ The reusable MCP core remains provider-neutral. The Cloudflare adapter adds a st
 ## Tools
 
 - `get_candidate_profile` requires `profile:read` and returns the authenticated subject's current profile, version, and SHA-256 digest.
+- `get_candidate_profile_metadata` requires `profile:read` and returns only the version and SHA-256 without loading the profile body. Use it for version checks.
 - `run_dual_assessment` requires `assessment:run`, accepts a questionnaire and tailored resume, loads the current authoritative profile, and sends two comparable requests through the configured `JevClient`.
 
-Neither tool accepts an API key. The server does not persist tailored resumes or Jev results, and its logging interface receives metadata only.
+None of the tools accepts an API key. The server does not persist tailored resumes or Jev results, and its logging interface receives metadata only.
 
 ## Local validation
 
@@ -35,10 +36,12 @@ The adapter is also responsible for the Streamable HTTP transport and OAuth disc
 ## Production architecture
 
 - `POST /mcp` is the stable, OAuth-protected Streamable HTTP endpoint.
-- Cloudflare's OAuth provider performs MCP OAuth discovery, PKCE/token handling, dynamic client registration, and bearer-token validation.
+- Cloudflare's OAuth provider performs MCP OAuth discovery, PKCE/token handling, dynamic client registration, and bearer-token validation. The authorization page displays the client's redirect origin so you can check the destination before approving.
 - Google is the upstream identity provider. Only `openid email profile` are requested. The ID token signature, issuer, audience, verified-email flag, and exact account allowlist are checked.
-- The Worker does not retain Google access or refresh tokens. Its MCP token contains only Google's opaque `sub` value and the granted MCP scopes.
-- `OAUTH_KV` stores OAuth grants. Short-lived browser state is carried in HMAC-signed, secure cookies so it does not depend on eventually consistent KV reads. `PROFILE_KV` stores the private profile under that opaque subject.
+- The Worker does not retain Google access or refresh tokens. Its MCP grant contains Google's opaque `sub`, the granted MCP scopes, and an HMAC fingerprint of the allowed account. Changing `ALLOWED_GOOGLE_EMAIL` or the cookie signing key makes previous grants unusable at `/mcp`; reconnect the client to sign in again. Previously issued grants may remain in `OAUTH_KV` until the provider expires or revokes them.
+- `OAUTH_KV` stores OAuth grants. Short-lived browser state is carried in HMAC-signed (not encrypted), secure cookies so it does not depend on eventually consistent KV reads. `PROFILE_KV` stores the private profile under that opaque subject.
+- Each assessment accepts at most 60 questions, 128 KiB of tailored resume JSON, and 256 KiB total input. The Cloudflare rate limiter allows 5 assessments per 60 seconds for each account per Cloudflare location. This is a local throttling measure, not a global billing cap.
+- Successful Jev responses must supply a correctly typed answer for every question in each candidate view; otherwise the tool returns a sanitized failure.
 - The profile uploader writes an immutable, SHA-256-addressed record first and advances the `current` pointer second. Reads recompute the digest before returning any profile.
 
 ## One-time Cloudflare setup
@@ -58,10 +61,11 @@ Copy the two namespace IDs printed by Wrangler into shell variables. They are de
 export CLOUDFLARE_WORKER_NAME="choose-a-worker-name"
 export OAUTH_KV_NAMESPACE_ID="the-oauth-kv-id"
 export PROFILE_KV_NAMESPACE_ID="the-profile-kv-id"
+export ASSESSMENT_RATE_LIMIT_NAMESPACE_ID="1001"
 npm run deploy
 ```
 
-The deploy script renders ignored `.wrangler.generated.jsonc` from committed `wrangler.template.jsonc`. Account IDs and namespace IDs therefore stay outside Git.
+Choose an unused positive integer rate-limit namespace ID for your Cloudflare account (the default is `1001`). The deploy script renders ignored `.wrangler.generated.jsonc` from committed `wrangler.template.jsonc`. Account IDs and KV namespace IDs therefore stay outside Git.
 
 After the first deployment, add runtime secrets interactively. Wrangler prompts for each value, so the values do not appear in the command or repository:
 
@@ -135,7 +139,7 @@ In the Cloudflare Git-connected Worker, set the root directory to `server` and c
 
 - Build command: `npm ci && npm run check`
 - Deploy command: `npm run deploy`
-- Build variables: `CLOUDFLARE_WORKER_NAME`, `OAUTH_KV_NAMESPACE_ID`, and `PROFILE_KV_NAMESPACE_ID`
+- Build variables: `CLOUDFLARE_WORKER_NAME`, `OAUTH_KV_NAMESPACE_ID`, `PROFILE_KV_NAMESPACE_ID`, and optionally `ASSESSMENT_RATE_LIMIT_NAMESPACE_ID` (defaults to `1001`)
 - Worker runtime secrets: `JEV_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_GOOGLE_EMAIL`, and `COOKIE_ENCRYPTION_KEY`
 
 The generated Wrangler file is ignored, so GitHub receives instructions and a variable-driven template—not account IDs, personal identity, candidate data, or secrets.

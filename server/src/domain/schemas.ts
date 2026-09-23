@@ -37,8 +37,8 @@ export const JevQuestionSchema = z.union([
 export const JevQuestionsSchema = z.record(
   z.string().trim().min(1).max(500),
   JevQuestionSchema,
-).refine((questions) => Object.keys(questions).length > 0, {
-  message: "questions must not be empty",
+).refine((questions) => Object.keys(questions).length > 0 && Object.keys(questions).length <= 60, {
+  message: "questions must contain between 1 and 60 items",
 });
 
 export const QuestionnaireSchema = z.object({
@@ -53,12 +53,22 @@ export const CandidateProfileOutputSchema = z.object({
   profile: JsonObjectSchema,
 }).strict();
 
+export const CandidateProfileMetadataOutputSchema = CandidateProfileOutputSchema.omit({ profile: true });
+
 export const RunDualAssessmentInputSchema = z.object({
   questionnaire: QuestionnaireSchema,
   tailored_resume: JsonObjectSchema,
   profile_version: z.string().trim().min(1).max(200).optional(),
   model: z.string().trim().min(1).max(200).default("jev-latest"),
-}).strict();
+}).strict().superRefine((input, context) => {
+  const encoder = new TextEncoder();
+  if (encoder.encode(JSON.stringify(input.tailored_resume)).byteLength > 128 * 1024) {
+    context.addIssue({ code: "custom", message: "tailored resume exceeds 128 KiB", path: ["tailored_resume"] });
+  }
+  if (encoder.encode(JSON.stringify(input)).byteLength > 256 * 1024) {
+    context.addIssue({ code: "custom", message: "assessment request exceeds 256 KiB" });
+  }
+});
 
 const JevRunOutputSchema = z.object({
   elapsed_ms: z.number().nonnegative(),

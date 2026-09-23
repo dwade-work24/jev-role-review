@@ -10,6 +10,7 @@ export interface ProfileRecord {
 
 export interface ProfileStore {
   getCurrent(subject: string): Promise<ProfileRecord | null>;
+  getMetadata(subject: string): Promise<Pick<ProfileRecord, "version" | "sha256"> | null>;
 }
 
 export class ProfileNotFoundError extends Error {
@@ -53,20 +54,25 @@ export function currentProfileKey(subject: string): string {
 export class CloudflareKvProfileStore implements ProfileStore {
   constructor(private readonly namespace: KvProfileNamespace) {}
 
-  async getCurrent(subject: string): Promise<ProfileRecord | null> {
+  async getMetadata(subject: string): Promise<Pick<ProfileRecord, "version" | "sha256"> | null> {
     const rawPointer = await this.namespace.get(currentProfileKey(subject), { type: "json" });
     if (rawPointer === null) return null;
-
     const pointer = CurrentProfilePointerSchema.safeParse(rawPointer);
     if (!pointer.success) throw new ProfileStoreIntegrityError();
-    const rawRecord = await this.namespace.get(profileKey(subject, pointer.data.sha256), {
+    return pointer.data;
+  }
+
+  async getCurrent(subject: string): Promise<ProfileRecord | null> {
+    const pointer = await this.getMetadata(subject);
+    if (pointer === null) return null;
+    const rawRecord = await this.namespace.get(profileKey(subject, pointer.sha256), {
       type: "json",
     });
     const record = CandidateProfileOutputSchema.safeParse(rawRecord);
     if (
       !record.success
-      || record.data.version !== pointer.data.version
-      || record.data.sha256 !== pointer.data.sha256
+      || record.data.version !== pointer.version
+      || record.data.sha256 !== pointer.sha256
       || await sha256Json(record.data.profile) !== record.data.sha256
     ) {
       throw new ProfileStoreIntegrityError();
@@ -90,5 +96,10 @@ export class InMemoryProfileStore implements ProfileStore {
 
   async getCurrent(subject: string): Promise<ProfileRecord | null> {
     return this.#records.get(subject) ?? null;
+  }
+
+  async getMetadata(subject: string): Promise<Pick<ProfileRecord, "version" | "sha256"> | null> {
+    const record = this.#records.get(subject);
+    return record === undefined ? null : { version: record.version, sha256: record.sha256 };
   }
 }

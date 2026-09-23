@@ -38,6 +38,40 @@ export interface DualAssessmentFailure {
   readonly status?: number;
 }
 
+export interface AssessmentRateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+export class AssessmentRateLimitError extends Error {
+  constructor() {
+    super("Assessment rate limit exceeded");
+    this.name = "AssessmentRateLimitError";
+  }
+}
+
+function validateAnswers(response: JevAssessmentResponse, questions: RunDualAssessmentInput["questionnaire"]["questions"]): void {
+  const expected = Object.keys(questions);
+  const actual = Object.keys(response.answers);
+  if (actual.length !== expected.length || expected.some((key) => !Object.hasOwn(response.answers, key))) {
+    throw new JevUpstreamError("invalid_response");
+  }
+  for (const key of expected) {
+    const question = questions[key];
+    const answer = response.answers[key];
+    if (!question || typeof answer !== "object" || answer === null || Array.isArray(answer)
+      || (answer as Record<string, unknown>).type !== question.type) {
+      throw new JevUpstreamError("invalid_response");
+    }
+    if (question.type === "score") {
+      const score = (answer as Record<string, unknown>).score;
+      if (typeof score !== "number" || !Number.isFinite(score)
+        || score < 0 || score > question.criteria.length - 1) {
+        throw new JevUpstreamError("invalid_response");
+      }
+    }
+  }
+}
+
 function sanitizedFailure(view: CandidateView, reason: unknown): DualAssessmentFailure {
   if (!(reason instanceof JevUpstreamError)) return { view, kind: "unexpected" };
   return reason.status === undefined
@@ -51,6 +85,7 @@ async function timedAssessment(
 ): Promise<{ elapsed_ms: number; response: JevAssessmentResponse }> {
   const started = performance.now();
   const response = await client.assess(request);
+  validateAnswers(response, request.questions);
   return {
     elapsed_ms: Math.round((performance.now() - started) * 1_000) / 1_000,
     response,
@@ -62,6 +97,7 @@ export async function runDualAssessment(
   context: AuthContext,
   profileStore: ProfileStore,
   jevClient: JevClient,
+  rateLimiter?: AssessmentRateLimiter,
 ): Promise<DualAssessmentOutput> {
   requireScope(context, "assessment:run");
   const input = RunDualAssessmentInputSchema.parse(rawInput);
@@ -69,6 +105,10 @@ export async function runDualAssessment(
   if (profile === null) throw new ProfileNotFoundError();
   if (input.profile_version !== undefined && input.profile_version !== profile.version) {
     throw new ProfileVersionMismatchError();
+  }
+
+  if (rateLimiter && !(await rateLimiter.limit({ key: context.subject })).success) {
+    throw new AssessmentRateLimitError();
   }
 
   const requestId = crypto.randomUUID();

@@ -4,11 +4,13 @@ export interface McpAuthProps {
   readonly [key: string]: unknown;
   readonly subject: string;
   readonly scopes: string[];
+  readonly allowedAccountFingerprint: string;
 }
 
 export interface CloudflareEnv {
   readonly OAUTH_KV: KVNamespace;
   readonly PROFILE_KV: KVNamespace;
+  readonly ASSESSMENT_RATE_LIMITER: RateLimit;
   readonly OAUTH_PROVIDER: OAuthHelpers;
   readonly GOOGLE_CLIENT_ID: string;
   readonly GOOGLE_CLIENT_SECRET: string;
